@@ -1,294 +1,3 @@
-'''import streamlit as st
-from modules.loader import load_file
-from modules.validator import validate_dataset
-from modules.cleaner import clean_dataset
-from modules.analyzer import analyze_dataset, find_column
-from modules.visualizer import generate_all_charts
-from modules.insights import generate_insights
-from modules.query import (
-    get_available_queries,
-    query_top_products,
-    query_lowest_selling_products,
-    query_revenue_by_city,
-    query_revenue_by_category,
-    query_orders_by_city,
-)
-from modules.exporter import export_to_csv, export_to_excel, export_to_pdf
-from modules.ai_assistant import ask_ai
-from modules.theme import apply_theme, show_intro, custom_metric
-
-try:
-    from streamlit_option_menu import option_menu
-    HAS_OPTION_MENU = True
-except ImportError:
-    HAS_OPTION_MENU = False
-
-st.set_page_config(page_title="InsightSphere", layout="wide")
-
-dark_mode = st.sidebar.toggle("Dark Mode", value=False)
-apply_theme(dark_mode=dark_mode)
-
-if "intro_shown" not in st.session_state:
-    st.session_state["intro_shown"] = True
-    show_intro()
-else:
-    st.title("InsightSphere")
-    st.caption("Upload your business data to get started")
-
-uploaded_file = st.file_uploader("Upload CSV or Excel file", type=["csv", "xlsx"])
-
-if uploaded_file is None:
-    st.stop()
-
-try:
-    df = load_file(uploaded_file)
-except ValueError as e:
-    st.error(str(e))
-    st.stop()
-except Exception as e:
-    st.error(f"Something went wrong while reading the file: {e}")
-    st.stop()
-
-errors = validate_dataset(df)
-if errors:
-    st.error("The uploaded file has issues that need to be fixed:")
-    for err in errors:
-        st.write(f"- {err}")
-    st.stop()
-
-st.success(f"File loaded and validated: {uploaded_file.name}")
-
-cleaned_df = clean_dataset(df.copy())
-final_df, kpis = analyze_dataset(cleaned_df)
-
-# ---------------- Sidebar Filters ----------------
-st.sidebar.header("Filters")
-
-city_col = find_column(final_df, ["city", "location", "region"])
-category_col = find_column(final_df, ["category", "type"])
-date_col = find_column(final_df, ["date"])
-
-filtered_df = final_df.copy()
-
-if city_col:
-    city_options = sorted(final_df[city_col].dropna().unique().tolist())
-    selected_cities = st.sidebar.multiselect("City", city_options, default=city_options)
-    filtered_df = filtered_df[filtered_df[city_col].isin(selected_cities)]
-
-if category_col:
-    category_options = sorted(final_df[category_col].dropna().unique().tolist())
-    selected_categories = st.sidebar.multiselect("Category", category_options, default=category_options)
-    filtered_df = filtered_df[filtered_df[category_col].isin(selected_categories)]
-
-if date_col:
-    valid_dates = final_df[date_col].dropna()
-    if not valid_dates.empty:
-        min_date = valid_dates.min().date()
-        max_date = valid_dates.max().date()
-        date_range = st.sidebar.date_input("Date Range", value=(min_date, max_date), min_value=min_date, max_value=max_date)
-        if len(date_range) == 2:
-            start_date, end_date = date_range
-            filtered_df = filtered_df[
-                (filtered_df[date_col].dt.date >= start_date) &
-                (filtered_df[date_col].dt.date <= end_date)
-            ]
-
-if filtered_df.empty:
-    st.warning("No data matches the selected filters. Adjust filters to see results.")
-    st.stop()
-
-_, kpis = analyze_dataset(filtered_df)
-final_df = filtered_df
-
-# ---------------- Sidebar Navigation ----------------
-st.sidebar.markdown("---")
-
-nav_options = ["Dashboard", "Insights & Query", "Export", "Ask AI"]
-nav_icons = ["speedometer2", "search", "download", "chat-dots"]
-
-if HAS_OPTION_MENU:
-    with st.sidebar:
-        selected_page = option_menu(
-            menu_title="Navigate",
-            options=nav_options,
-            icons=nav_icons,
-            default_index=0,
-            styles={
-                "container": {"padding": "0", "background-color": "transparent"},
-                "icon": {"color": "var(--primary)", "font-size": "15px"},
-                "nav-link": {"font-size": "14px", "text-align": "left", "margin": "3px 0", "border-radius": "10px"},
-                "nav-link-selected": {"background-color": "rgba(108,92,231,0.22)"},
-            },
-        )
-else:
-    selected_page = st.sidebar.radio("Navigate", nav_options)
-
-
-# ============================================================
-# PAGE: DASHBOARD
-# ============================================================
-def render_dashboard():
-    st.subheader("Key Metrics")
-
-    if not kpis:
-        st.info("No KPIs could be calculated from this dataset.")
-    else:
-        kpi_items = list(kpis.items())
-        cols = st.columns(len(kpi_items))
-        for col, (name, value) in zip(cols, kpi_items):
-            if isinstance(value, float):
-                display_value = f"{value:,.2f}"
-            elif isinstance(value, int):
-                display_value = f"{value:,}"
-            else:
-                display_value = str(value)
-            with col:
-                custom_metric(name, display_value)
-
-    with st.expander("Preview: Cleaned data with calculated features"):
-        st.dataframe(final_df.head(20), use_container_width=True)
-
-    st.divider()
-    st.subheader("Visual Insights")
-
-    charts = generate_all_charts(final_df)
-    heatmap = charts.pop("Correlation Heatmap", None)
-
-    if not charts:
-        st.info("No charts could be generated from this dataset.")
-    else:
-        chart_names = list(charts.keys())
-        for i in range(0, len(chart_names), 2):
-            row_charts = chart_names[i:i + 2]
-            cols = st.columns(len(row_charts))
-            for col, name in zip(cols, row_charts):
-                col.plotly_chart(charts[name], use_container_width=True)
-
-    if heatmap:
-        with st.expander("Advanced: Correlation Analysis (technical)"):
-            st.caption("Shows statistical relationships between numeric columns. For data analysts.")
-            st.plotly_chart(heatmap, use_container_width=True)
-
-    st.divider()
-    st.subheader("Business Insights")
-
-    insights = generate_insights(final_df, kpis)
-    if not insights:
-        st.info("No insights could be generated from this dataset.")
-    else:
-        for insight in insights:
-            st.markdown(f"- {insight}")
-
-
-# ============================================================
-# PAGE: INSIGHTS & QUERY
-# ============================================================
-def render_query():
-    st.subheader("Search & Query")
-
-    available_queries = get_available_queries(final_df)
-
-    if not available_queries:
-        st.info("No predefined queries are available for this dataset.")
-        return
-
-    selected_query = st.selectbox("Ask a question", list(available_queries.keys()))
-    query_key = available_queries[selected_query]
-
-    if query_key == "top_products":
-        st.dataframe(query_top_products(final_df), use_container_width=True)
-
-    elif query_key == "lowest_products":
-        st.dataframe(query_lowest_selling_products(final_df), use_container_width=True)
-
-    elif query_key == "revenue_by_city":
-        city_choice = st.selectbox("Select city", sorted(final_df[city_col].dropna().unique().tolist()))
-        result = query_revenue_by_city(final_df, city_choice)
-        if result is not None:
-            custom_metric(f"Total Revenue — {city_choice}", f"PKR {result:,.0f}")
-
-    elif query_key == "revenue_by_category":
-        category_choice = st.selectbox("Select category", sorted(final_df[category_col].dropna().unique().tolist()))
-        result = query_revenue_by_category(final_df, category_choice)
-        if result is not None:
-            custom_metric(f"Total Revenue — {category_choice}", f"PKR {result:,.0f}")
-
-    elif query_key == "orders_by_city":
-        st.dataframe(query_orders_by_city(final_df), use_container_width=True)
-
-
-# ============================================================
-# PAGE: EXPORT
-# ============================================================
-def render_export():
-    st.subheader("Export Report")
-
-    insights = generate_insights(final_df, kpis)
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        csv_data = export_to_csv(final_df)
-        st.download_button("Download CSV", data=csv_data, file_name="insightsphere_data.csv", mime="text/csv")
-
-    with col2:
-        excel_data = export_to_excel(final_df, kpis)
-        st.download_button(
-            "Download Excel", data=excel_data, file_name="insightsphere_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-    with col3:
-        pdf_data = export_to_pdf(kpis, insights, final_df)
-        st.download_button("Download PDF Report", data=pdf_data, file_name="insightsphere_report.pdf", mime="application/pdf")
-
-
-# ============================================================
-# PAGE: ASK AI
-# ============================================================
-def render_ai_chat():
-    st.subheader("Ask AI About Your Data")
-
-    if "chat_messages" not in st.session_state:
-        st.session_state["chat_messages"] = []
-
-    for msg in st.session_state["chat_messages"]:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-    user_question = st.chat_input("Ask a question about your business data...")
-
-    if user_question:
-        st.session_state["chat_messages"].append({"role": "user", "content": user_question})
-        with st.chat_message("user"):
-            st.markdown(user_question)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Analyzing your data..."):
-                try:
-                    answer = ask_ai(
-                        question=user_question,
-                        df=final_df,
-                        kpis=kpis,
-                        chat_history=st.session_state["chat_messages"][:-1],
-                    )
-                except Exception as e:
-                    answer = f"Something went wrong while contacting the AI: {e}"
-                st.markdown(answer)
-
-        st.session_state["chat_messages"].append({"role": "assistant", "content": answer})
-
-
-# ---------------- Route to selected page ----------------
-if selected_page == "Dashboard":
-    render_dashboard()
-elif selected_page == "Insights & Query":
-    render_query()
-elif selected_page == "Export":
-    render_export()
-elif selected_page == "Ask AI":
-    render_ai_chat()'''
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -414,6 +123,7 @@ df_demo = get_mock_data()
 
 # 4. Premium Sidebar Navigation Elements
 with st.sidebar:
+    # ✅ FIX #2: Completed truncated sidebar title
     st.markdown(
         "<h1 style='font-size: 1.8rem; background: linear-gradient(135deg, #38bdf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight:800;'>🔮 InsightSphere</h1>",
         unsafe_allow_html=True)
@@ -511,48 +221,52 @@ elif app_mode == "📊 Intelligence Dashboard":
     filtered_df = df_demo[(df_demo['City'].isin(selected_city)) & (df_demo['Category'].isin(selected_cat))]
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Glassmorphic KPI Row Architecture
-    kpi1, kpi2, kpi3 = st.columns(3)
-    with kpi1:
-        total_rev = filtered_df['Revenue'].sum() if not filtered_df.empty else 0
-        st.markdown(f"""
-            <div class="glass-card">
-                <div class="kpi-label">💰 Gross Enterprise Revenue</div>
-                <div class="kpi-value">PKR {total_rev:,}</div>
-            </div>
-        """, unsafe_allow_html=True)
-    with kpi2:
-        total_qty = filtered_df['Quantity'].sum() if not filtered_df.empty else 0
-        st.markdown(f"""
-            <div class="glass-card">
-                <div class="kpi-label">📦 Total Inventory Outflow</div>
-                <div class="kpi-value">{total_qty:,} Units</div>
-            </div>
-        """, unsafe_allow_html=True)
-    with kpi3:
-        avg_order = filtered_df['Revenue'].mean() if not filtered_df.empty else 0
-        st.markdown(f"""
-            <div class="glass-card">
-                <div class="kpi-label">📈 Average Transaction Value</div>
-                <div class="kpi-value">PKR {avg_order:,.0f}</div>
-            </div>
-        """, unsafe_allow_html=True)
+    # ✅ FIX #4: Added proper empty data handling with user warning
+    if filtered_df.empty:
+        st.warning("⚠️ No data matches your selected filters. Please adjust your selections to view analytics.")
+    else:
+        # Glassmorphic KPI Row Architecture
+        kpi1, kpi2, kpi3 = st.columns(3)
+        with kpi1:
+            total_rev = filtered_df['Revenue'].sum()
+            st.markdown(f"""
+                <div class="glass-card">
+                    <div class="kpi-label">💰 Gross Enterprise Revenue</div>
+                    <div class="kpi-value">PKR {total_rev:,}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with kpi2:
+            total_qty = filtered_df['Quantity'].sum()
+            st.markdown(f"""
+                <div class="glass-card">
+                    <div class="kpi-label">📦 Total Inventory Outflow</div>
+                    <div class="kpi-value">{total_qty:,} Units</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with kpi3:
+            avg_order = filtered_df['Revenue'].mean()
+            st.markdown(f"""
+                <div class="glass-card">
+                    <div class="kpi-label">📈 Average Transaction Value</div>
+                    <div class="kpi-value">PKR {avg_order:,.0f}</div>
+                </div>
+            """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    # Modern Native Chart Blocks
-    chart_col1, chart_col2 = st.columns(2)
-    with chart_col1:
-        st.markdown("<div class='glass-card'>📈 <b>Revenue Allocations Across Hub Cities</b>", unsafe_allow_html=True)
-        city_sales = filtered_df.groupby('City')['Revenue'].sum() if not filtered_df.empty else pd.Series()
-        st.bar_chart(city_sales, color="#38bdf8")
-        st.markdown("</div>", unsafe_allow_html=True)
+        # Modern Native Chart Blocks
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.markdown("<div class='glass-card'>📈 <b>Revenue Allocations Across Hub Cities</b>", unsafe_allow_html=True)
+            city_sales = filtered_df.groupby('City')['Revenue'].sum()
+            st.bar_chart(city_sales, color="#38bdf8")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    with chart_col2:
-        st.markdown("<div class='glass-card'>🛒 <b>Product Demand Vector Densities</b>", unsafe_allow_html=True)
-        prod_sales = filtered_df.groupby('Product')['Quantity'].sum() if not filtered_df.empty else pd.Series()
-        st.line_chart(prod_sales, color="#818cf8")
-        st.markdown("</div>", unsafe_allow_html=True)
+        with chart_col2:
+            st.markdown("<div class='glass-card'>🛒 <b>Product Demand Vector Densities</b>", unsafe_allow_html=True)
+            prod_sales = filtered_df.groupby('Product')['Quantity'].sum()
+            st.line_chart(prod_sales, color="#818cf8")
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # ==================== INTERFACE LAYER 4: AI AGENT ====================
 elif app_mode == "🧠 Contextual AI Agent":
@@ -563,9 +277,9 @@ elif app_mode == "🧠 Contextual AI Agent":
         <div class="glass-card">
             <h4 style="color: #38bdf8; margin-top:0;">💡 Executive Summary Insight Streams</h4>
             <ul style="color: #cbd5e1; line-height: 1.8;">
-                <li><b style="color:#ffffff;">Regional Dominance Vector:</b> <span class="neon-accent">Lahore</span> scales out as the core high-yield hub, contributing over 60% of the aggregate transaction cash flow.</li>
-                <li><b style="color:#ffffff;">Velocity Performance Indicator:</b> Laptops command high revenue margins, but smaller peripherals like <span class="neon-accent">Mice</span> present higher logistical unit frequency volume.</li>
-                <li><b style="color:#ffffff;">Structural Recommendation:</b> Furniture categories are carrying dead overhead due to low transaction frequency. Adjusting pricing models is recommended.</li>
+                <li><b style="color:#ffffff;">Regional Dominance Vector:</b> <span class="neon-accent">Lahore</span> scales out as the core high-yield hub, contributing over 60% of the aggregate revenue stream, establishing the city as a primary revenue driver for sustained market expansion and localized operational investments.</li>
+                <li><b style="color:#ffffff;">Velocity Performance Indicator:</b> Laptops command high revenue margins with strong transaction throughput, while smaller peripherals like <span class="neon-accent">Mice</span> present significant volume opportunities despite lower unit prices, suggesting cross-sell and bundling strategies could maximize customer lifetime value.</li>
+                <li><b style="color:#ffffff;">Structural Recommendation:</b> Furniture categories are carrying operational overhead due to moderate transaction frequency and pricing sensitivity. Strategic inventory reallocation and seasonal promotional campaigns could optimize margins while improving inventory turnover rates and reducing capital deployment risk.</li>
             </ul>
         </div>
     """, unsafe_allow_html=True)
