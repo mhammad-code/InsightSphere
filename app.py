@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import io
 from modules.loader import load_file
 from modules.validator import validate_dataset
 from modules.cleaner import clean_dataset
@@ -27,19 +28,31 @@ def cached_load_and_clean(file_bytes, file_name):
     """
     Cached so re-clicking nav tabs or changing filters doesn't re-read and
     re-clean the file from scratch every time -- only reruns when the
-    actual uploaded file changes. This is the main performance fix, since
-    Streamlit reruns the whole script on every button/filter click.
+    actual uploaded file changes. Updated to handle standard UTF-8 and
+    fallback to Latin-1/Windows-1252 for legacy/Excel e-commerce files.
     """
-    import io
-    file_like = io.BytesIO(file_bytes)
-    file_like.name = file_name
-    raw_df = load_file(file_like)
+    # 1. Try standard UTF-8 loading first
+    try:
+        file_like = io.BytesIO(file_bytes)
+        file_like.name = file_name
+        raw_df = load_file(file_like)
+    except UnicodeDecodeError:
+        # 2. Fallback to Latin-1 decoding if special/regional characters are found
+        try:
+            file_like = io.BytesIO(file_bytes)
+            file_like.name = file_name
+            # Direct fallback read via pandas matching the CSV loader style
+            raw_df = pd.read_csv(file_like, encoding='latin1')
+        except Exception as e:
+            return None, [f"Failed to decode file with fallback: {str(e)}"]
+    except Exception as e:
+        return None, [f"Error reading dataset: {str(e)}"]
+
     errors = validate_dataset(raw_df)
     if errors:
         return None, errors
     cleaned = clean_dataset(raw_df.copy())
     return cleaned, None
-
 
 
 apply_theme()
