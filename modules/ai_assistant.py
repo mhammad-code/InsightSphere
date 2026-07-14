@@ -1,5 +1,6 @@
 import os
 import json
+import numpy as np
 from pathlib import Path
 from dotenv import load_dotenv
 from groq import Groq
@@ -9,6 +10,32 @@ env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+
+class SafeJSONEncoder(json.JSONEncoder):
+    """
+    A robust JSON encoder that handles NumPy types, pandas types,
+    and NaN/Inf values that standard json.dumps crashes on.
+    """
+    def default(self, obj):
+        # Handle NumPy integers (e.g., int64)
+        if isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        # Handle NumPy floats (e.g., float64)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            # Convert NaN or Inf to None (represented as null in JSON)
+            if np.isnan(obj) or np.isinf(obj):
+                return None
+            return float(obj)
+        # Handle NumPy arrays or Pandas series
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        # Handle float('nan') or float('inf') standard python types
+        elif isinstance(obj, float):
+            if np.isnan(obj) or np.isinf(obj):
+                return None
+            return obj
+        return super(SafeJSONEncoder, self).default(obj)
 
 
 def build_data_summary(df, kpis):
@@ -60,6 +87,14 @@ def ask_ai(question, df, kpis, chat_history=None):
     """
     data_summary = build_data_summary(df, kpis)
 
+    # Convert keys to strings to handle any non-string dictionary keys (like dates or numbers)
+    # and use the SafeJSONEncoder to dump without crashes
+    try:
+        serialized_summary = json.dumps(data_summary, cls=SafeJSONEncoder)
+    except Exception:
+        # Fallback string representation just in case
+        serialized_summary = str(data_summary)
+
     system_prompt = (
         "You are a business data analyst assistant inside a BI dashboard called InsightSphere. "
         "You are given a summary of the user's business dataset as JSON. "
@@ -67,7 +102,7 @@ def ask_ai(question, df, kpis, chat_history=None):
         "Do not invent numbers that are not present or derivable from the summary. "
         "If the data summary does not contain enough information to answer, say so clearly. "
         "Keep answers concise and business-focused, written like a report insight, not raw code or JSON.\n\n"
-        f"Data summary:\n{json.dumps(data_summary)}"
+        f"Data summary:\n{serialized_summary}"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
