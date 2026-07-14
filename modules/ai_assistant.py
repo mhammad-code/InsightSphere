@@ -101,6 +101,8 @@ def ask_ai(question, df, kpis, chat_history=None):
         "Answer questions ONLY using this data. "
         "Do not invent numbers that are not present or derivable from the summary. "
         "If the data summary does not contain enough information to answer, say so clearly. "
+        "CRITICAL: All monetary figures, prices, revenues, and costs MUST be presented and formatted as PKR "
+        "(e.g., prefix with 'Rs.' or 'PKR' and format with commas like 'Rs. 1,500,000' or '1.5 Million PKR'). "
         "Keep answers concise and business-focused, written like a report insight, not raw code or JSON.\n\n"
         f"Data summary:\n{serialized_summary}"
     )
