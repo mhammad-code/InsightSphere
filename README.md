@@ -12,6 +12,12 @@
   <img src="https://img.shields.io/badge/Groq%20API-F55036?style=for-the-badge&amp;logo=meta&amp;logoColor=white"/>
 </p>
 
+<p align="center">
+  <a href="https://insightsphere.streamlit.app/" target="_blank">
+    <img src="https://img.shields.io/badge/Live%20Demo-⚡-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Live Demo"/>
+  </a>
+</p>
+
 ---
 
 ## 📖 Overview
@@ -105,12 +111,6 @@ streamlit run app.py
 │   └── visualizer.py          # Plotly layout configurations
 
 ```
-
----
-
-## 📸 Screenshots
-
-> Add screenshots or a short demo GIF of the dashboard panels here once available.
 
 ---
 
