@@ -1,4 +1,4 @@
-```markdown
+
 <h1 align="center">📊 InsightSphere</h1>
 <h3 align="center">Simple Business Insights Dashboard</h3>
 
