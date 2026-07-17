@@ -1,4 +1,4 @@
-
+```markdown
 <h1 align="center">📊 InsightSphere</h1>
 <h3 align="center">Simple Business Insights Dashboard</h3>
 
@@ -12,11 +12,12 @@
   <img src="https://img.shields.io/badge/Groq%20API-F55036?style=for-the-badge&amp;logo=meta&amp;logoColor=white"/>
 </p>
 
-<p align="center">
-  <a href="https://insightsphere.streamlit.app/" target="_blank">
-    <img src="https://img.shields.io/badge/Live%20Demo-⚡-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Live Demo"/>
-  </a>
-</p>
+---
+
+## 🔗 Live Demo
+
+Experience the dashboard live in your browser:
+🚀 **[Launch InsightSphere App](https://insightsphere-4ffyceynrc7vmxwfriiq3q.streamlit.app/)**
 
 ---
 
